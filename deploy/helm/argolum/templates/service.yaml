@@ -1,0 +1,21 @@
+{{- $healthPort := 8081 -}}
+{{- if and .Values.env .Values.env.HEALTH_PROBE_BIND_ADDR -}}
+  {{- $healthPort = (trimPrefix ":" .Values.env.HEALTH_PROBE_BIND_ADDR | int) -}}
+{{- else if .Values.config.healthProbeBindAddr -}}
+  {{- $healthPort = (trimPrefix ":" .Values.config.healthProbeBindAddr | int) -}}
+{{- end -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "argolum.fullname" . }}
+  labels:
+    {{- include "argolum.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ $healthPort }}
+      protocol: TCP
+      name: http-probes
+  selector:
+    {{- include "argolum.selectorLabels" . | nindent 4 }}

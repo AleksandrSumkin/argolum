@@ -1,0 +1,111 @@
+{{- $healthPort := 8081 -}}
+{{- if and .Values.env .Values.env.HEALTH_PROBE_BIND_ADDR -}}
+  {{- $healthPort = (trimPrefix ":" .Values.env.HEALTH_PROBE_BIND_ADDR | int) -}}
+{{- else if .Values.config.healthProbeBindAddr -}}
+  {{- $healthPort = (trimPrefix ":" .Values.config.healthProbeBindAddr | int) -}}
+{{- end -}}
+{{- $metricsPort := 8080 -}}
+{{- if and .Values.env .Values.env.METRICS_BIND_ADDR -}}
+  {{- $metricsPort = (trimPrefix ":" .Values.env.METRICS_BIND_ADDR | int) -}}
+{{- else if .Values.config.metricsBindAddr -}}
+  {{- $metricsPort = (trimPrefix ":" .Values.config.metricsBindAddr | int) -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "argolum.fullname" . }}
+  labels:
+    {{- include "argolum.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "argolum.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "argolum.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "argolum.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if not (hasKey .Values.env "LOG_LEVEL") }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | default "info" | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.env "LOG_FORMAT") }}
+            - name: LOG_FORMAT
+              value: {{ .Values.config.logFormat | default "json" | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.env "PRUNE_ORPHAN_USERS") }}
+            - name: PRUNE_ORPHAN_USERS
+              value: {{ .Values.config.pruneOrphanUsers | default false | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.env "PRUNE_INTERVAL") }}
+            - name: PRUNE_INTERVAL
+              value: {{ .Values.config.pruneInterval | default "10m" | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.env "IGNORE_USERS") }}
+            - name: IGNORE_USERS
+              value: {{ .Values.config.ignoreUsers | default "admin" | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.env "METRICS_BIND_ADDR") }}
+            - name: METRICS_BIND_ADDR
+              value: {{ .Values.config.metricsBindAddr | default ":8080" | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.env "HEALTH_PROBE_BIND_ADDR") }}
+            - name: HEALTH_PROBE_BIND_ADDR
+              value: {{ .Values.config.healthProbeBindAddr | default ":8081" | quote }}
+            {{- end }}
+            {{- if and .Values.config.argocdCMName (not (hasKey .Values.env "ARGOCD_CM_NAME")) }}
+            - name: ARGOCD_CM_NAME
+              value: {{ .Values.config.argocdCMName | quote }}
+            {{- end }}
+            {{- if and .Values.config.argocdSecretName (not (hasKey .Values.env "ARGOCD_SECRET_NAME")) }}
+            - name: ARGOCD_SECRET_NAME
+              value: {{ .Values.config.argocdSecretName | quote }}
+            {{- end }}
+            {{- if and .Values.config.argocdRBACCMName (not (hasKey .Values.env "ARGOCD_RBAC_CM_NAME")) }}
+            - name: ARGOCD_RBAC_CM_NAME
+              value: {{ .Values.config.argocdRBACCMName | quote }}
+            {{- end }}
+            {{- range $key, $val := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ $metricsPort }}
+              protocol: TCP
+            - name: probes
+              containerPort: {{ $healthPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $healthPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ $healthPort }}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

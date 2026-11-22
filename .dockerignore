@@ -1,0 +1,10 @@
+.git
+.gitignore
+deploy/
+manifests/
+graphify-out/
+.preview/
+bin/
+*.md
+LICENSE
+Makefile

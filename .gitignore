@@ -1,0 +1,24 @@
+# Binaries
+/bin/
+/argolum
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Temporary rendered manifests
+argocd-rendered.yaml
+argocd-test-values.yaml
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Graphify
+graphify-out/
+.agents/
+dist-release/

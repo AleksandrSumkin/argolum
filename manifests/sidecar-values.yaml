@@ -1,0 +1,108 @@
+# ==============================================================================
+# ArgoCD Helm Values Fragment for argolum (Sidecar Mode)
+# ==============================================================================
+# Add this fragment to your values.yaml when deploying the official ArgoCD chart:
+# Chart repository: https://argoproj.github.io/argo-helm
+# Chart name: argo-cd
+#
+# WHY SIDECAR MODE?
+# - Zero RBAC overhead: Running inside the 'argocd-server' pod reuses the default
+#   'argocd-server' ServiceAccount, which already has read/write permissions for
+#   ConfigMaps (argocd-cm, argocd-rbac-cm) and Secrets (argocd-secret) in its namespace.
+# - Low footprint: argolum consumes minimal resources (~10-20m CPU, ~30Mi RAM).
+# - High availability: argolum scales and restarts naturally with argocd-server.
+# ==============================================================================
+
+server:
+  extraContainers:
+    - name: argolum
+      image: ghcr.io/aleksandrsumkin/argolum:latest # Replace with pinned tag if desired (e.g. v1.0.0)
+      imagePullPolicy: IfNotPresent
+      env:
+        # Namespace to monitor for user Secrets.
+        # Downward API passes the namespace of the current pod automatically.
+        - name: WATCH_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+
+        # Logging level: "debug", "info", "warn", "error" (default: "info")
+        - name: LOG_LEVEL
+          value: "info"
+
+        # Logging format: "json" (recommended for ELK/Loki) or "text" (human-readable)
+        - name: LOG_FORMAT
+          value: "json"
+
+        # Orphan User Pruning:
+        # If set to "true", argolum periodically checks all local users in 'argocd-cm'.
+        # Any user that does NOT have a corresponding Kubernetes Secret with argolum labels
+        # will be automatically removed (excluding users defined in IGNORE_USERS).
+        - name: PRUNE_ORPHAN_USERS
+          value: "false" # Set to "true" to enable automatic reconciliation cleanup
+
+        # Interval between orphan user pruning passes (default: "10m")
+        - name: PRUNE_INTERVAL
+          value: "10m"
+
+        # Comma-separated list of local usernames protected from modification or pruning
+        - name: IGNORE_USERS
+          value: "admin"
+
+        # Port configuration:
+        # IMPORTANT: argocd-server listens on :8080 (API) and :8083 (metrics).
+        # We bind argolum to non-conflicting ports in the shared pod network namespace.
+        - name: METRICS_BIND_ADDR
+          value: ":8090" # Prometheus metrics endpoint (:8090/metrics)
+
+        - name: HEALTH_PROBE_BIND_ADDR
+          value: ":8091" # Health check endpoint (:8091/healthz, :8091/readyz)
+
+        # ----------------------------------------------------------------------
+        # OPTIONAL ENVIRONMENT OVERRIDES (uncomment to customize if needed):
+        # ----------------------------------------------------------------------
+        # - name: BCRYPT_COST
+        #   value: "10" # Cost factor between 4 and 31 (default: 10)
+        # - name: LABEL_NAME
+        #   value: "argolum" # Custom label selector name (default: "argolum")
+        # - name: LABEL_PART_OF
+        #   value: "argocd" # Custom label part-of selector (default: "argocd")
+        # - name: ARGOCD_CM_NAME
+        #   value: "argocd-cm" # Auto-detected if omitted
+        # - name: ARGOCD_SECRET_NAME
+        #   value: "argocd-secret" # Auto-detected if omitted
+        # - name: ARGOCD_RBAC_CM_NAME
+        #   value: "argocd-rbac-cm" # Auto-detected if omitted
+
+      # Resource allocation guidelines:
+      resources:
+        requests:
+          cpu: 20m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+
+      # Security hardening (strictly non-root & read-only):
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65532 # Standard nonroot UID (distroless)
+        capabilities:
+          drop:
+            - ALL
+
+      # Kubernetes health probes (using port 8091 configured in HEALTH_PROBE_BIND_ADDR):
+      livenessProbe:
+        httpGet:
+          path: /healthz
+          port: 8091
+        initialDelaySeconds: 15
+        periodSeconds: 20
+      readinessProbe:
+        httpGet:
+          path: /readyz
+          port: 8091
+        initialDelaySeconds: 5
+        periodSeconds: 10
