@@ -3,7 +3,7 @@ module github.com/aleksandrsumkin/argolum
 go 1.26.0
 
 require (
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	golang.org/x/crypto v0.59.0
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
